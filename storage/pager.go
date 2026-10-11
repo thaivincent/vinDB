@@ -46,5 +46,15 @@ func (p *Pager) GetPage(pageIndex uint32)(*Page, error) {
 	}
 
 	return &pg, nil
-	
+}
+
+func(p* Pager) FlushPage(page *Page, pageIndex uint32) error {
+	offset := pageIndex * PageSize
+	_, err := p.FileRef.WriteAt(page[:], int64(offset))
+	return err 
+}
+
+// Caller is responsible for flushing the pages to disk
+func(p* Pager) Close() error{
+	return p.FileRef.Close()
 }
