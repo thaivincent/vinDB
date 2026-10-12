@@ -4,7 +4,8 @@ import (
 )
 
 
-
+// A Pager is a wrapper around a file which can paginate
+// read and write operations to that file
 type Pager struct {
 	FileRef *os.File
 	PageCount int64
