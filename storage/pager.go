@@ -32,7 +32,7 @@ func Open(filename string) (*Pager, error) {
 
 	return &p, err
 }
-
+// Returns a chunked section of our file, in terms of Pages
 func (p *Pager) GetPage(pageIndex uint32)(*Page, error) {
 	offset := pageIndex * PageSize
 	pg := Page{}
@@ -40,10 +40,7 @@ func (p *Pager) GetPage(pageIndex uint32)(*Page, error) {
 	if pageIndex >= uint32(p.PageCount) {
 		p.PageCount = int64(pageIndex) + 1
 	} else {
-		_, err := p.FileRef.ReadAt(pg[:],int64(offset))
-		if err != nil {
-			return nil, err
-		}
+		_, _ = p.FileRef.ReadAt(pg[:],int64(offset))
 	}
 
 	return &pg, nil
