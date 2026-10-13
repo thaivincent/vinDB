@@ -1,0 +1,31 @@
+# Compiled binaries and executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+vinDB.exe
+__debug_bin*
+
+# Test and runtime database files
+*.db
+launch.json
+
+# Test artifacts and coverage
+*.test
+*.out
+coverage.html
+
+# IDE / Editor configurations
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+.DS_Store
+
