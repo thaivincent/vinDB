@@ -8,6 +8,7 @@ import (
 
 // Temporary struct to hold the data for a row.
 // This is used to encode and decode rows to and from bytes.
+// Current Row size = 255 + 32 + 4 = 291 Bytes
 const IDSize = 4
 const UsernameSize = 32
 const EmailSize = 255
