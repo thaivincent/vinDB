@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/vince/vinDB/btree"
 	"github.com/vince/vinDB/encoding"
 	"github.com/vince/vinDB/storage"
 )
-
 
 // CLI REPL for vinDB, needs to be called with a valid DB file
 // Current supported commands:
@@ -35,12 +35,11 @@ func main() {
 		print(err)
 	}
 	defer pg.Close()
-	heap, err := pg.OpenHeap()
+
+	bt, err := btree.NewBTree(pg,0)
 	if err != nil {
 		print(err)
 	}
-	heap.Pager = pg
-
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -59,7 +58,7 @@ func main() {
 		switch cmd {
 			case "insert":
 				if len(parts) != 4 {
-					fmt.Println("Too many arguments")
+					fmt.Println("Usage: insert <id> <user> <email>")
 					continue
 				}
 
@@ -75,20 +74,36 @@ func main() {
 					Username: user,
 					Email: email,
 				}
-				err = heap.Insert(&row) 
+				rowBytes, err := row.SerializeRow()
 				if err != nil {
+					fmt.Print(err)
+				}
+				
+				if err = bt.Insert(row.ID, rowBytes);err != nil {
 					fmt.Printf("Insert Error: %v\n", err)
 				}
+			case "find":
+				if len(parts) != 2 {
+					fmt.Println("Usage: find <id>")
+					continue
+				}
+				id, err :=  strconv.Atoi(parts[1])
+				if err != nil {
+					fmt.Printf("ATOI Error: %v\n", err)
+					continue
+				}
 
-			case "select":
-				if len(parts) != 1 {
-					fmt.Println("Too many arguments")
+				rowBytes,err :=  bt.Find(uint32(id))
+				if err != nil {
+					fmt.Print(err)
+					continue
 				}
-				fn := func(r *encoding.Row) bool {
-					fmt.Printf("(%d,%s,%s)\n", r.ID, r.Username,r.Email)
-					return true
+
+				r, err := encoding.DeserializeRow(rowBytes)
+				if err != nil {
+					fmt.Print(err)
 				}
-				heap.Scan(fn)
+				fmt.Printf("(%d,%s,%s)\n", r.ID, r.Username,r.Email)
 			default:
 				fmt.Println("Invalid Command")
 		}
