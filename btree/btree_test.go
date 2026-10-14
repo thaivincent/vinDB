@@ -204,3 +204,98 @@ func TestBTreeRootSplitWith20Keys(t *testing.T) {
 		}
 	}
 }
+
+func TestBTreeChildLeafSplitWith50Keys(t *testing.T) {
+	path := tempDB(t)
+
+	pg, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer pg.Close()
+
+	tree, err := btree.NewBTree(pg, 0)
+	if err != nil {
+		t.Fatalf("NewBTree failed: %v", err)
+	}
+
+	// Insert 50 sequential keys (forces root split and multiple child leaf splits!)
+	for i := uint32(1); i <= 50; i++ {
+		val := makeRow(i, fmt.Sprintf("user%d", i), fmt.Sprintf("user%d@db.com", i))
+		if err := tree.Insert(i, val); err != nil {
+			t.Fatalf("insert %d failed: %v", i, err)
+		}
+	}
+
+	// Verify all 50 keys can be retrieved accurately
+	for i := uint32(1); i <= 50; i++ {
+		valBytes, err := tree.Find(i)
+		if err != nil {
+			t.Fatalf("failed to find key %d after multiple child splits: %v", i, err)
+		}
+
+		row, err := encoding.DeserializeRow(valBytes)
+		if err != nil {
+			t.Fatalf("deserialize failed for key %d: %v", i, err)
+		}
+
+		if row.ID != i {
+			t.Errorf("expected ID %d, got %d", i, row.ID)
+		}
+		expectedUser := fmt.Sprintf("user%d", i)
+		if row.Username != expectedUser {
+			t.Errorf("expected username %s, got %s", expectedUser, row.Username)
+		}
+	}
+}
+
+func TestBTreeChildLeafSplitNonSequential(t *testing.T) {
+	path := tempDB(t)
+
+	pg, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer pg.Close()
+
+	tree, err := btree.NewBTree(pg, 0)
+	if err != nil {
+		t.Fatalf("NewBTree failed: %v", err)
+	}
+
+	// Insert keys in non-sequential order to trigger splits in both left and middle leaves (Case B)
+	keys := []uint32{
+		50, 25, 75, 10, 30, 60, 90, 5, 15, 27, 35, 55, 65, 80, 95,
+		1, 3, 7, 12, 18, 22, 28, 32, 38, 52, 58, 62, 68, 78, 85,
+		88, 92, 98, 2, 4, 6, 8, 14, 16, 24, 26, 34, 36, 54, 56,
+		64, 66, 76, 82, 86,
+	}
+
+	for _, k := range keys {
+		val := makeRow(k, fmt.Sprintf("user%d", k), fmt.Sprintf("user%d@db.com", k))
+		if err := tree.Insert(k, val); err != nil {
+			t.Fatalf("insert %d failed: %v", k, err)
+		}
+	}
+
+	// Verify all keys can be retrieved accurately
+	for _, k := range keys {
+		valBytes, err := tree.Find(k)
+		if err != nil {
+			t.Fatalf("failed to find key %d in non-sequential B-Tree: %v", k, err)
+		}
+
+		row, err := encoding.DeserializeRow(valBytes)
+		if err != nil {
+			t.Fatalf("deserialize failed for key %d: %v", k, err)
+		}
+
+		if row.ID != k {
+			t.Errorf("expected ID %d, got %d", k, row.ID)
+		}
+		expectedUser := fmt.Sprintf("user%d", k)
+		if row.Username != expectedUser {
+			t.Errorf("expected username %s, got %s", expectedUser, row.Username)
+		}
+	}
+}
