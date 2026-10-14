@@ -29,6 +29,7 @@ const KeySize = 4
 const RightPageIDSize = 4
 const InternalNodeHeaderSize = LeafNodeHeaderSize + RightPageIDSize
 const InternalCellSize = ParentPageIDSize + KeySize
+const InternalMaxCells = (storage.PageSize - InternalNodeHeaderSize) / InternalCellSize
 
 const LeafNodeHeaderSize = 10
 const LeafCellSize  = KeySize + encoding.RowSize
@@ -232,7 +233,7 @@ func (t *BTree) Find(nodeKey uint32) ([]byte, error){
 				if err != nil {
 					return nil, err
 				}
-				searchNode = Node{Page: p}
+	searchNode = Node{Page: p}
 
 	}
 	ind, found := searchNode.FindKeyInLeaf(nodeKey)
@@ -278,7 +279,6 @@ func (t *BTree) Insert(nodeKey uint32, nodeVal []byte) error {
 				}
 				insertNode = Node{Page: p}
 	}
-
 	err = insertNode.InsertLeafCell(nodeKey,nodeVal)
 	if err != nil {
 		return err
@@ -341,5 +341,87 @@ func (t *BTree) splitRootLeaf() error {
 	if err := p.FlushPage(right.Page,rightPageIndex); err != nil {return err}
 
 	return nil
+
+}
+
+func (n *Node) InsertInternalCell(key uint32, childPageId uint32) error {
+	if n.NumKeys() == InternalMaxCells {
+		return fmt.Errorf("Page at capacity: Max Internal cells %d", InternalMaxCells)
+	}
+	low := 0
+	high := int(n.NumKeys())-1
+	insertIndex := int(n.NumKeys())
+
+	for low <= high {
+		mid := (high + low) / 2
+		k :=  n.InternalKey(uint32(mid))
+		if key == k{
+			return fmt.Errorf("Key already exists: %d", key)
+		} else if key < k {
+			insertIndex = mid
+			high = mid - 1
+		} else {
+			low  = mid + 1
+		}
+	}
+	startByte := InternalNodeHeaderSize + (insertIndex * InternalCellSize)
+	endByte := InternalNodeHeaderSize + (n.NumKeys() * InternalCellSize)
+
+	copy(n.Page[startByte + InternalCellSize:], n.Page[startByte:endByte])
+	n.SetInternalKey(key, uint32(insertIndex))
+	n.SetInternalValue(childPageId, uint32(insertIndex))
+	n.SetNumKeys(n.NumKeys() + 1)
+
+	return nil
+}
+
+func (t *BTree) splitChildLeaf(pageIndex uint32, insertNode *Node) error {
+	p := t.pager
+	rightPageIndex := p.PageCount
+
+	right, err := p.GetPage(uint32(p.PageCount))
+	if err != nil {
+    	return err
+	}	
+	r, err := p.GetPage(t.rootPageID)
+	if err != nil {
+		return err
+	}
+
+	root := Node{Page: r}
+
+	leftCells := (LeafMaxCells + 1) / 2
+	rightCells := LeafMaxCells - leftCells
+
+	secondHalfbytes := insertNode.Page[LeafNodeHeaderSize+(leftCells * LeafCellSize):]
+	
+	copy(right[LeafNodeHeaderSize:LeafNodeHeaderSize+(rightCells * LeafCellSize)], secondHalfbytes)
+	clear(insertNode.Page[LeafNodeHeaderSize+(leftCells * LeafCellSize):])
+	
+	rightNode := Node{Page: right}
+	
+	rightNode.SetIsLeaf(true)
+	rightNode.SetIsRoot(false)
+	rightNode.SetNumKeys(uint32(rightCells))
+	rightNode.SetParentPageID(t.rootPageID)
+
+	insertNode.SetNumKeys(uint32(leftCells))
+
+	if (pageIndex == root.InternalRightChild()) {
+		root.SetInternalRightChild(uint32(rightPageIndex))
+	} else {
+		for i := uint32(0); i < root.NumKeys(); i++ {
+			if root.InternalValue(i) == pageIndex {
+				root.SetInternalValue(uint32(rightPageIndex), i)
+				break
+			}
+		}
+	}
+	dividingKey := insertNode.LeafKey(uint32(leftCells)-1)
+	root.InsertInternalCell(dividingKey,pageIndex)
+
+	if err = p.FlushPage(insertNode.Page, pageIndex); err != nil {return err}
+	if err = p.FlushPage(root.Page, t.rootPageID); err != nil {return err}
+	return p.FlushPage(rightNode.Page,uint32(rightPageIndex))
 
 }
