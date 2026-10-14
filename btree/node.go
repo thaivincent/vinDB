@@ -219,16 +219,7 @@ func (t *BTree) Find(nodeKey uint32) ([]byte, error){
 	searchNode := root
 
 	if !root.IsLeaf() {
-		pageIndex := root.InternalRightChild()
-		// Look through the (pageIndex, key) pairs
-		for i := uint32(0); i < root.NumKeys(); i++{
-			k := root.InternalKey(i)
-			if nodeKey <= k {
-				pageIndex = root.InternalValue(i)
-				break
-			}
-		}
-
+		pageIndex := root.FindChildPage(nodeKey)
 		p, err := t.pager.GetPage(pageIndex)
 				if err != nil {
 					return nil, err
@@ -265,25 +256,44 @@ func (t *BTree) Insert(nodeKey uint32, nodeVal []byte) error {
 	}
 
 	if !root.IsLeaf() {
-		insertPageIndex = root.InternalRightChild()
-		for i := uint32(0); i < root.NumKeys(); i++{
-			k := root.InternalKey(i)
-			if nodeKey <= k {
-				insertPageIndex = root.InternalValue(i)
-				break
-			}
-		}
+		insertPageIndex = root.FindChildPage(nodeKey)
 		p, err := t.pager.GetPage(insertPageIndex)
 				if err != nil {
 					return err
 				}
 				insertNode = Node{Page: p}
 	}
+	if insertNode.NumKeys() == LeafMaxCells{
+		if err = t.splitChildLeaf(insertPageIndex, &insertNode); err != nil {return err}
+		// Re-fetch most current root
+		page, err = t.pager.GetPage(t.rootPageID)
+		if err != nil {
+			return err
+		}
+		root = Node{Page: page}
+		
+		insertPageIndex = root.FindChildPage(nodeKey)
+		p, err := t.pager.GetPage(insertPageIndex)
+		if err != nil {
+			return err
+		}
+		insertNode = Node{Page: p}
+	}
 	err = insertNode.InsertLeafCell(nodeKey,nodeVal)
 	if err != nil {
 		return err
 	}
 	return t.pager.FlushPage(insertNode.Page, insertPageIndex)
+}
+
+func (n *Node) FindChildPage(key uint32) uint32 {
+	pageIndex := n.InternalRightChild()
+	for i := uint32(0); i < n.NumKeys(); i++ {
+		if key <= n.InternalKey(i) {
+			return n.InternalValue(i)
+		}
+	}
+	return pageIndex
 }
 
 func (t *BTree) splitRootLeaf() error {
