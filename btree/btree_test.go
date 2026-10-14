@@ -51,7 +51,6 @@ func TestBTreeInsertAndFindSorted(t *testing.T) {
 		t.Fatalf("NewBTree failed: %v", err)
 	}
 
-	// Insert keys out of order
 	keysToInsert := []uint32{50, 10, 30, 20, 5}
 	for _, k := range keysToInsert {
 		val := makeRow(k, fmt.Sprintf("user%d", k), fmt.Sprintf("user%d@test.com", k))
@@ -60,7 +59,6 @@ func TestBTreeInsertAndFindSorted(t *testing.T) {
 		}
 	}
 
-	// Verify all keys can be found and return the correct row
 	for _, k := range keysToInsert {
 		valBytes, err := tree.Find(k)
 		if err != nil {
@@ -81,7 +79,6 @@ func TestBTreeInsertAndFindSorted(t *testing.T) {
 		}
 	}
 
-	// Verify non-existent keys return an error
 	nonExistentKeys := []uint32{1, 15, 25, 999}
 	for _, k := range nonExistentKeys {
 		_, err := tree.Find(k)
@@ -110,7 +107,6 @@ func TestBTreeRejectDuplicate(t *testing.T) {
 		t.Fatalf("initial insert failed: %v", err)
 	}
 
-	// Duplicate insert should fail
 	if err := tree.Insert(10, val); err == nil {
 		t.Fatal("expected duplicate insert to return an error, got nil")
 	}
@@ -119,7 +115,6 @@ func TestBTreeRejectDuplicate(t *testing.T) {
 func TestBTreePersistenceAcrossReopen(t *testing.T) {
 	path := tempDB(t)
 
-	// Step 1: Open, insert keys, close
 	pg, err := storage.Open(path)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
@@ -142,7 +137,6 @@ func TestBTreePersistenceAcrossReopen(t *testing.T) {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	// Step 2: Reopen in a new process simulation
 	pg2, err := storage.Open(path)
 	if err != nil {
 		t.Fatalf("reopen failed: %v", err)
@@ -167,3 +161,46 @@ func TestBTreePersistenceAcrossReopen(t *testing.T) {
 	}
 }
 
+func TestBTreeRootSplitWith20Keys(t *testing.T) {
+	path := tempDB(t)
+
+	pg, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer pg.Close()
+
+	tree, err := btree.NewBTree(pg, 0)
+	if err != nil {
+		t.Fatalf("NewBTree failed: %v", err)
+	}
+
+	// Insert 20 keys (capacity of single leaf is 13, so this forces a root split!)
+	for i := uint32(1); i <= 20; i++ {
+		val := makeRow(i, fmt.Sprintf("user%d", i), fmt.Sprintf("user%d@db.com", i))
+		if err := tree.Insert(i, val); err != nil {
+			t.Fatalf("insert %d failed: %v", i, err)
+		}
+	}
+
+	// Verify all 20 keys can be found correctly across the split tree!
+	for i := uint32(1); i <= 20; i++ {
+		valBytes, err := tree.Find(i)
+		if err != nil {
+			t.Fatalf("failed to find key %d after split: %v", i, err)
+		}
+
+		row, err := encoding.DeserializeRow(valBytes)
+		if err != nil {
+			t.Fatalf("deserialize failed for key %d: %v", i, err)
+		}
+
+		if row.ID != i {
+			t.Errorf("expected ID %d, got %d", i, row.ID)
+		}
+		expectedUser := fmt.Sprintf("user%d", i)
+		if row.Username != expectedUser {
+			t.Errorf("expected username %s, got %s", expectedUser, row.Username)
+		}
+	}
+}
